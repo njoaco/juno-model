@@ -1,64 +1,61 @@
-# scripts/predict.py
-
 import os
 import numpy as np
 import pandas as pd
 import cryptocompare
 import tensorflow as tf
-from tensorflow.keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
-import joblib  # Usaremos joblib en lugar de pickle
+import joblib
 
-def download_crypto_data(symbol, currency='USD', limit=2100):
-    """
-    Descarga datos históricos diarios de la criptomoneda.
-    Se descarga una cantidad mayor para asegurarse de contar con suficientes datos.
-    """
-    data = cryptocompare.get_historical_price_day(symbol, currency=currency, limit=limit)
-    df = pd.DataFrame(data)
-    df['time'] = pd.to_datetime(df['time'], unit='s')
-    df.sort_values('time', inplace=True)
-    df.reset_index(drop=True, inplace=True)
-    return df
+# Configuración
+window_size = 60  # Ventana de datos pasados (60 días)
+epochs = 100
+batch_size = 16
+
+# Crear la carpeta de guardado si no existe
+save_dir = os.path.join(os.path.dirname(__file__), "..", "models", "saved_models")
+os.makedirs(save_dir, exist_ok=True)
+
+# Cargar scaler guardado
+
 
 def main():
-    crypto_symbol = 'XRP'
-    currency = 'USD'
-    window_size = 60
-    forecast_horizon = 30  # Aunque el modelo fue entrenado para predecir 30 días en el futuro
-    
-    # Ubicación de los archivos del modelo y scaler
-    model_dir = os.path.join(os.path.dirname(__file__), "..", "models", "saved_models")
-    model_filename = f"model_{crypto_symbol}.h5"
-    model_path = os.path.join(model_dir, model_filename)
-    
-    scaler_filename = f"scaler_{crypto_symbol}.pkl"
-    scaler_path = os.path.join(model_dir, scaler_filename)
-    
-    # Cargar el modelo y el scaler
-    # Usamos compile=False para evitar problemas de recompilación
-    model = load_model(model_path, compile=False)
-    
-    # Cargamos el scaler usando joblib.load (ya que se guardó con joblib.dump)
-    scaler = joblib.load(scaler_path)
-    
-    # Descargar datos recientes (se necesitan al menos window_size + forecast_horizon días)
-    df = download_crypto_data(crypto_symbol, currency, limit=window_size + forecast_horizon)
-    data = df['close'].values.reshape(-1, 1)
-    
-    # Escalar los datos utilizando el scaler guardado
-    data_scaled = scaler.transform(data)
-    
-    # Tomamos los últimos 'window_size' días para construir la secuencia de entrada
-    input_sequence = data_scaled[-window_size:]
-    input_sequence = input_sequence.reshape(1, window_size, 1)
-    
-    # Realizar la predicción (la salida estará escalada)
-    prediction_scaled = model.predict(input_sequence)
-    
-    # Convertir la predicción a la escala original
-    prediction = scaler.inverse_transform(prediction_scaled)
-    print(f"Predicción para {crypto_symbol} a {forecast_horizon} días: {prediction[0][0]}")
 
-if __name__ == '__main__':
+    crypto_symbol = input("Ingrese el símbolo de la criptomoneda (ej. BTC, ETH): ").upper()  # 
+
+    scaler_path = os.path.join(save_dir, f"scaler_{crypto_symbol}.pkl")  # 🆕 Nombre dinámico
+    scaler = joblib.load(scaler_path)
+
+    model_path = os.path.join(save_dir, f"model_{crypto_symbol}.h5")  # 🆕 Nombre dinámico
+    model = tf.keras.models.load_model(model_path)
+
+    # Obtener los últimos 60 precios de cierre para la predicción
+    print(f"Obteniendo los últimos datos de {crypto_symbol}...")
+    hist_data = cryptocompare.get_historical_price_day(crypto_symbol, currency="USD", limit=window_size)
+    df = pd.DataFrame(hist_data)
+    df["time"] = pd.to_datetime(df["time"], unit="s")
+    df.set_index("time", inplace=True)
+
+    # Asegurarse de tener las columnas correctas en el DataFrame para usar con el scaler
+    df = df[['close', 'high', 'low', 'volumeto']]  # Orden correcto (igual que en train_model.py)
+
+    # Escalar los datos (incluir todas las columnas como en el entrenamiento)
+    data_scaled = scaler.transform(df)
+
+    # Crear la secuencia de entrada para la predicción (usando solo la columna 'close')
+    input_sequence = data_scaled[-window_size:, 2]  # El índice 2 corresponde a 'close' (la columna de precios de cierre)
+
+    # Redimensionar para que el modelo pueda aceptarlo
+    input_sequence = input_sequence.reshape(1, window_size, 1)  # (1, 60, 1) para LSTM
+
+    # Realizar la predicción
+    predicted_price = model.predict(input_sequence)
+    dummy_data = np.zeros((1, 4))
+    dummy_data[:, 0] = predicted_price  # 'close' es la primera columna en el scaler
+    predicted_price = scaler.inverse_transform(dummy_data)[0][0]  # Extraer solo el valor 'close'
+
+    # Imprimir la predicción
+    print(f"Predicción de precio para {crypto_symbol} a 30 días: {predicted_price}")
+
+# Ejecutar la función principal
+if __name__ == "__main__":
     main()

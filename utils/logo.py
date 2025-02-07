@@ -16,6 +16,6 @@ def print_logo():
       :---. *@@@@@@@@*        
              :+*##*=.         
 
-             v0.1
+            JUNO c1
     """
     print("\033[91m" + logo + "\033[0m")  # Imprime en color rojo
