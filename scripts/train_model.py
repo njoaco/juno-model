@@ -19,6 +19,8 @@ os.makedirs(save_dir, exist_ok=True)
 
 # Obtener datos históricos
 print(f"Descargando datos para {crypto_symbol}...")
+current_price = cryptocompare.get_price(crypto_symbol, currency='USD')[crypto_symbol]['USD']
+print(f"\nPrecio actual de {crypto_symbol}: ${current_price:.2f} USD")
 hist_data = cryptocompare.get_historical_price_day(crypto_symbol, currency="USD", limit=2000)
 df = pd.DataFrame(hist_data)
 df["time"] = pd.to_datetime(df["time"], unit="s")

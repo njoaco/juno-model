@@ -5,6 +5,7 @@ import cryptocompare
 import tensorflow as tf
 from sklearn.preprocessing import MinMaxScaler
 import joblib
+from datetime import datetime
 
 # Configuración
 window_size = 60  # Ventana de datos pasados (60 días)
@@ -19,8 +20,13 @@ os.makedirs(save_dir, exist_ok=True)
 
 
 def main():
+    prediction_dir = os.path.join(os.path.dirname(__file__), "..", "predictions")
+    os.makedirs(prediction_dir, exist_ok=True)
+
     crypto_symbol = input("Ingrese el símbolo de la criptomoneda (ej. BTC, ETH): ").upper()
-    
+
+    current_price = cryptocompare.get_price(crypto_symbol, currency='USD')[crypto_symbol]['USD']
+    print(f"\nPrecio actual de {crypto_symbol}: ${current_price:.2f} USD")
     # Solicitar días a predecir (1-30)
     while True:
         try:
@@ -53,6 +59,23 @@ def main():
 
     # Mostrar predicción del día seleccionado
     print(f"Predicción para {crypto_symbol} en el día {days}: {predicted_prices[days-1]:.2f} USD")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = os.path.join(prediction_dir, f"pred_{crypto_symbol}_{timestamp}.txt")
+
+    report_content = f"""=== Predicción {crypto_symbol} ===
+    Fecha/Hora: {datetime.now().strftime("%d/%m/%Y %H:%M:%S")}
+    Precio actual: ${current_price:.2f}
+    Día predicho: {days}
+    Precio predicho: ${predicted_prices[days-1]:.2f}
+    Histórico de 30 días:
+    """ + "\n".join([f"Día {i+1}: ${price:.2f}" for i, price in enumerate(predicted_prices)])
+
+    # Guardar archivo
+    with open(filename, 'w') as f:
+        f.write(report_content)
+    
+    print(f"\nPredicción guardada en: {filename}")
 
 # Ejecutar la función principal
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
-./models/saved_models/
-./models/
+models/saved_models/
+models/
+predictions/
 ./utils/__pycache__/
