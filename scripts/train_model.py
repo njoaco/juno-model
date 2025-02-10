@@ -39,19 +39,19 @@ joblib.dump(scaler, scaler_path)
 # Crear secuencias para entrenar
 X, y = [], []
 for i in range(len(df_scaled) - look_back - 30):
-    X.append(df_scaled[i : i + look_back, 0])
-    y.append(df_scaled[i + look_back + 30, 0])  # Predicción a 30 días
+    X.append(df_scaled[i : i + look_back, 0])  # Ventana de entrada
+    y.append(df_scaled[i + look_back : i + look_back + 30, 0])  # Secuencia de 30 días
 
 X, y = np.array(X), np.array(y)
 X = np.reshape(X, (X.shape[0], X.shape[1], 1))
 
-# Definir modelo LSTM
+# Definir modelo LSTM (salida de 30 neuronas)
 model = tf.keras.Sequential([
     tf.keras.layers.LSTM(100, return_sequences=True, input_shape=(X.shape[1], 1)),
     tf.keras.layers.Dropout(0.3),
     tf.keras.layers.LSTM(100),
-    tf.keras.layers.Dense(50, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.01)),
-    tf.keras.layers.Dense(1)
+    tf.keras.layers.Dense(50, activation='relu'),
+    tf.keras.layers.Dense(30)  # Salida para 30 días
 ])
 
 model.compile(optimizer="adam", loss="mean_squared_error")
