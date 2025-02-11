@@ -1,97 +1,124 @@
 import os
+import sys
 import numpy as np
 import pandas as pd
-import cryptocompare
 import tensorflow as tf
 from sklearn.preprocessing import MinMaxScaler
 import joblib
+import requests
+import cryptocompare
 import matplotlib.pyplot as plt
+from dotenv import load_dotenv
+
+# Cargar variables de entorno del archivo .env
+load_dotenv()
 
 # Configuración
-crypto_symbol = input("Ingrese el símbolo de la criptomoneda (ej. BTC, ETH): ").upper()
 look_back = 60  # Ventana de datos pasados
 epochs = 100
 batch_size = 16
 
+API_KEY = os.getenv("TWELVEDATA_API_KEY")
+if not API_KEY:
+    raise ValueError("No se encontró TWELVEDATA_API_KEY en el archivo .env")
+
 # Crear la carpeta de guardado si no existe
-save_dir = os.path.join(os.path.dirname(__file__), "..", "models", "saved_models")
+save_dir = os.path.join(os.path.dirname(__file__), "..", "models")
 os.makedirs(save_dir, exist_ok=True)
 
-# Obtener datos históricos
-print(f"Descargando datos para {crypto_symbol}...")
-current_price = cryptocompare.get_price(crypto_symbol, currency='USD')[crypto_symbol]['USD']
-print(f"\nPrecio actual de {crypto_symbol}: ${current_price:.2f} USD")
-hist_data = cryptocompare.get_historical_price_day(crypto_symbol, currency="USD", limit=2000)
-df = pd.DataFrame(hist_data)
-df["time"] = pd.to_datetime(df["time"], unit="s")
-df.set_index("time", inplace=True)
+def get_stock_data(symbol):
+    url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=1day&apikey={API_KEY}&outputsize=2000"
+    response = requests.get(url).json()
+    if "values" not in response:
+        error_message = response.get("message", "No se pudo obtener datos.")
+        raise ValueError(f"Error al obtener datos de TwelveData: {error_message}")
+    df = pd.DataFrame(response["values"])
+    df = df.rename(columns={"close": "close", "high": "high", "low": "low", "volume": "volumeto"})
+    df = df.sort_values(by="datetime").reset_index(drop=True)
+    return df
 
-# Verificar datos nulos o ceros
-if df[["close", "high", "low", "volumeto"]].isnull().values.any():
-    raise ValueError("Los datos contienen valores nulos.")
+def main():
+    asset_type = sys.argv[1] if len(sys.argv) > 1 else "1"
+    asset_type = "crypto" if asset_type == "1" else "stock"
+    
+    symbol = input(f"Ingrese el símbolo del {asset_type} (ej. BTC para cripto, AAPL para stock): ").upper()
+    
+    if asset_type == "crypto":
+        # Obtener y mostrar el precio actual para criptomonedas
+        current_price = cryptocompare.get_price(symbol, currency='USD')[symbol]['USD']
+        print(f"\nPrecio actual de {symbol}: ${current_price:.2f} USD")
+        hist_data = cryptocompare.get_historical_price_day(symbol, currency="USD", limit=2000)
+        df = pd.DataFrame(hist_data)
+    else:
+        # Obtener datos para stocks y mostrar el precio actual (último cierre)
+        df = get_stock_data(symbol)
+        current_price = float(df.iloc[-1]['close'])
+        print(f"\nPrecio actual de {symbol}: ${current_price:.2f} USD")
+    
+    # Asegurarse de que las columnas tengan el nombre esperado y eliminar valores nulos
+    df = df.rename(columns={"close": "close", "high": "high", "low": "low", "volume": "volumeto"})
+    df = df.dropna()
+    
+    # Normalización
+    scaler = MinMaxScaler(feature_range=(0, 1))
+    df_scaled = scaler.fit_transform(df[["close", "high", "low", "volumeto"]])
+    
+    scaler_path = os.path.join(save_dir, f"scaler_{symbol}.pkl")
+    joblib.dump(scaler, scaler_path)
+    
+    # Crear secuencias para entrenamiento
+    X, y = [], []
+    for i in range(len(df_scaled) - look_back - 30):
+        X.append(df_scaled[i : i + look_back, 0])
+        y.append(df_scaled[i + look_back : i + look_back + 30, 0])
+    
+    X, y = np.array(X), np.array(y)
+    X = np.reshape(X, (X.shape[0], X.shape[1], 1))
+    
+    # Configuración del gráfico en tiempo real para el entrenamiento
+    plt.ion()
+    fig, ax = plt.subplots(figsize=(10, 6))
+    line, = ax.plot([], [], label='Pérdida (Loss)')
+    ax.set_title(f"Entrenamiento de {symbol} - Pérdida por Época")
+    ax.set_xlabel("Época")
+    ax.set_ylabel("Pérdida")
+    ax.legend()
+    ax.grid(True)
+    
+    loss_history = []
+    
+    class LossCallback(tf.keras.callbacks.Callback):
+        def on_epoch_end(self, epoch, logs=None):
+            loss_history.append(logs['loss'])
+            line.set_data(range(len(loss_history)), loss_history)
+            ax.relim()
+            ax.autoscale_view()
+            plt.draw()
+            plt.pause(0.1)  # Pausa para actualizar el gráfico
+    
+    # Definición del modelo LSTM
+    model = tf.keras.Sequential([
+        tf.keras.layers.LSTM(100, return_sequences=True, input_shape=(X.shape[1], 1)),
+        tf.keras.layers.Dropout(0.3),
+        tf.keras.layers.LSTM(100),
+        tf.keras.layers.Dense(50, activation='relu'),
+        tf.keras.layers.Dense(30)  # Salida para 30 días
+    ])
+    
+    model.compile(optimizer="adam", loss="mean_squared_error")
+    
+    print(f"Entrenando el modelo para {symbol}...")
+    model.fit(X, y, epochs=epochs, batch_size=batch_size, verbose=1, callbacks=[LossCallback()])
+    
+    # Guardar el modelo
+    model_path = os.path.join(save_dir, f"model_{symbol}.h5")
+    model.save(model_path)
+    
+    print(f"Modelo guardado en {model_path}")
+    print(f"Scaler guardado en {scaler_path}")
+    
+    plt.ioff()
+    plt.show()
 
-# Normalización
-scaler = MinMaxScaler(feature_range=(0, 1))
-df_scaled = scaler.fit_transform(df[["close", "high", "low", "volumeto"]])
-
-# Guardar el scaler
-scaler_path = os.path.join(save_dir, f"scaler_{crypto_symbol}.pkl")
-joblib.dump(scaler, scaler_path)
-
-# Crear secuencias para entrenar
-X, y = [], []
-for i in range(len(df_scaled) - look_back - 30):
-    X.append(df_scaled[i : i + look_back, 0])  # Ventana de entrada
-    y.append(df_scaled[i + look_back : i + look_back + 30, 0])  # Secuencia de 30 días
-
-X, y = np.array(X), np.array(y)
-X = np.reshape(X, (X.shape[0], X.shape[1], 1))
-
-# Definir modelo LSTM (salida de 30 neuronas)
-model = tf.keras.Sequential([
-    tf.keras.layers.LSTM(100, return_sequences=True, input_shape=(X.shape[1], 1)),
-    tf.keras.layers.Dropout(0.3),
-    tf.keras.layers.LSTM(100),
-    tf.keras.layers.Dense(50, activation='relu'),
-    tf.keras.layers.Dense(30)  # Salida para 30 días
-])
-
-model.compile(optimizer="adam", loss="mean_squared_error")
-
-# Configurar matplotlib para modo interactivo
-plt.ion()
-fig, ax = plt.subplots(figsize=(10, 6))
-line, = ax.plot([], [], label='Pérdida (Loss)')
-ax.set_title(f"Entrenamiento de {crypto_symbol} - Pérdida por Época")
-ax.set_xlabel("Época")
-ax.set_ylabel("Pérdida")
-ax.legend()
-ax.grid(True)
-
-# Lista para almacenar la pérdida
-loss_history = []
-
-# Callback para actualizar la pérdida
-class LossCallback(tf.keras.callbacks.Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        loss_history.append(logs['loss'])
-        line.set_data(range(len(loss_history)), loss_history)
-        ax.relim()
-        ax.autoscale_view()
-        plt.draw()
-        plt.pause(0.1)  # Pausa para actualizar el gráfico
-
-# Entrenar el modelo
-print(f"Entrenando el modelo para {crypto_symbol}...")
-model.fit(X, y, epochs=epochs, batch_size=batch_size, verbose=1, callbacks=[LossCallback()])
-
-# Guardar el modelo
-model_path = os.path.join(save_dir, f"model_{crypto_symbol}.h5")
-model.save(model_path)
-
-print(f"Modelo guardado en {model_path}")
-print(f"Scaler guardado en {scaler_path}")
-
-# Mantener la ventana abierta al finalizar
-plt.ioff()
-plt.show()
+if __name__ == "__main__":
+    main()
