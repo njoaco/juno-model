@@ -32,5 +32,6 @@ models/saved_models/
 predictions/
 api/
 models/
+release/
 utils/__pycache__/
 utils/__pycache__/logo.cpython-312.pyc

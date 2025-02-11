@@ -75,8 +75,22 @@ def main():
     dummy_data[:, 0] = predicted_sequence
     predicted_prices = scaler.inverse_transform(dummy_data)[:, 0]
 
-    print(f"Prediction for {symbol} on day {days}: ${predicted_prices[days-1]:.2f} USD")
-
+    predicted_price = predicted_prices[days-1]
+    print(f"Prediction for {symbol} on day {days}: ${predicted_price:.2f} USD")
+    
+    # Calculate percentage change between predicted price and current price
+    percentage_change = ((predicted_price - current_price) / current_price) * 100
+    
+    # Determine recommendation based on a 5% threshold
+    if percentage_change > 5:
+        recommendation = "Buy"
+    elif percentage_change < -5:
+        recommendation = "Sell"
+    else:
+        recommendation = "Hold"
+    
+    print(f"Recommendation: {recommendation} (Change: {percentage_change:.2f}%)")
+    
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = os.path.join(prediction_dir, f"pred_{symbol}_{timestamp}.txt")
 
@@ -84,7 +98,8 @@ def main():
 Date/Time: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
 Current Price: ${current_price:.2f}
 Predicted Day: {days}
-Predicted Price: ${predicted_prices[days-1]:.2f}
+Predicted Price: ${predicted_price:.2f}
+Recommendation: {recommendation} (Change: {percentage_change:.2f}%)
 30-Day History:
 """ + "\n".join([f"Day {i+1}: ${price:.2f}" for i, price in enumerate(predicted_prices)])
 
