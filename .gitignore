@@ -33,3 +33,4 @@ predictions/
 api/
 models/
 utils/__pycache__/
+utils/__pycache__/logo.cpython-312.pyc
