@@ -10,19 +10,19 @@ import cryptocompare
 import matplotlib.pyplot as plt
 from dotenv import load_dotenv
 
-# Cargar variables de entorno del archivo .env
+# Load environment variables from .env
 load_dotenv()
 
-# Configuración
-look_back = 60  # Ventana de datos pasados
+# Configuration
+look_back = 60  # Window size for past data
 epochs = 100
 batch_size = 16
 
 API_KEY = os.getenv("TWELVEDATA_API_KEY")
 if not API_KEY:
-    raise ValueError("No se encontró TWELVEDATA_API_KEY en el archivo .env")
+    raise ValueError("TWELVEDATA_API_KEY not found in .env file")
 
-# Crear la carpeta de guardado si no existe
+# Create the save directory if it doesn't exist
 save_dir = os.path.join(os.path.dirname(__file__), "..", "models")
 os.makedirs(save_dir, exist_ok=True)
 
@@ -30,8 +30,8 @@ def get_stock_data(symbol):
     url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=1day&apikey={API_KEY}&outputsize=2000"
     response = requests.get(url).json()
     if "values" not in response:
-        error_message = response.get("message", "No se pudo obtener datos.")
-        raise ValueError(f"Error al obtener datos de TwelveData: {error_message}")
+        error_message = response.get("message", "Unable to retrieve data.")
+        raise ValueError(f"Error fetching data from TwelveData: {error_message}")
     df = pd.DataFrame(response["values"])
     df = df.rename(columns={"close": "close", "high": "high", "low": "low", "volume": "volumeto"})
     df = df.sort_values(by="datetime").reset_index(drop=True)
@@ -41,32 +41,32 @@ def main():
     asset_type = sys.argv[1] if len(sys.argv) > 1 else "1"
     asset_type = "crypto" if asset_type == "1" else "stock"
     
-    symbol = input(f"Ingrese el símbolo del {asset_type} (ej. BTC para cripto, AAPL para stock): ").upper()
+    symbol = input("Enter the asset symbol (e.g. BTC for crypto, AAPL for stock): ").upper()
     
     if asset_type == "crypto":
-        # Obtener y mostrar el precio actual para criptomonedas
+        # Get and display current price for cryptocurrencies
         current_price = cryptocompare.get_price(symbol, currency='USD')[symbol]['USD']
-        print(f"\nPrecio actual de {symbol}: ${current_price:.2f} USD")
+        print(f"\nCurrent price of {symbol}: ${current_price:.2f} USD")
         hist_data = cryptocompare.get_historical_price_day(symbol, currency="USD", limit=2000)
         df = pd.DataFrame(hist_data)
     else:
-        # Obtener datos para stocks y mostrar el precio actual (último cierre)
+        # Get data for stocks and display current price (latest close)
         df = get_stock_data(symbol)
         current_price = float(df.iloc[-1]['close'])
-        print(f"\nPrecio actual de {symbol}: ${current_price:.2f} USD")
+        print(f"\nCurrent price of {symbol}: ${current_price:.2f} USD")
     
-    # Asegurarse de que las columnas tengan el nombre esperado y eliminar valores nulos
+    # Ensure columns have expected names and drop missing values
     df = df.rename(columns={"close": "close", "high": "high", "low": "low", "volume": "volumeto"})
     df = df.dropna()
     
-    # Normalización
+    # Normalization
     scaler = MinMaxScaler(feature_range=(0, 1))
     df_scaled = scaler.fit_transform(df[["close", "high", "low", "volumeto"]])
     
     scaler_path = os.path.join(save_dir, f"scaler_{symbol}.pkl")
     joblib.dump(scaler, scaler_path)
     
-    # Crear secuencias para entrenamiento
+    # Create sequences for training
     X, y = [], []
     for i in range(len(df_scaled) - look_back - 30):
         X.append(df_scaled[i : i + look_back, 0])
@@ -75,13 +75,13 @@ def main():
     X, y = np.array(X), np.array(y)
     X = np.reshape(X, (X.shape[0], X.shape[1], 1))
     
-    # Configuración del gráfico en tiempo real para el entrenamiento
+    # Set up real-time training graph
     plt.ion()
     fig, ax = plt.subplots(figsize=(10, 6))
-    line, = ax.plot([], [], label='Pérdida (Loss)')
-    ax.set_title(f"Entrenamiento de {symbol} - Pérdida por Época")
-    ax.set_xlabel("Época")
-    ax.set_ylabel("Pérdida")
+    line, = ax.plot([], [], label='Loss')
+    ax.set_title(f"Training for {symbol} - Loss per Epoch")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Loss")
     ax.legend()
     ax.grid(True)
     
@@ -94,28 +94,28 @@ def main():
             ax.relim()
             ax.autoscale_view()
             plt.draw()
-            plt.pause(0.1)  # Pausa para actualizar el gráfico
+            plt.pause(0.1)  # Pause to update the graph
     
-    # Definición del modelo LSTM
+    # Define LSTM model
     model = tf.keras.Sequential([
         tf.keras.layers.LSTM(100, return_sequences=True, input_shape=(X.shape[1], 1)),
         tf.keras.layers.Dropout(0.3),
         tf.keras.layers.LSTM(100),
         tf.keras.layers.Dense(50, activation='relu'),
-        tf.keras.layers.Dense(30)  # Salida para 30 días
+        tf.keras.layers.Dense(30)  # Output for 30 days
     ])
     
     model.compile(optimizer="adam", loss="mean_squared_error")
     
-    print(f"Entrenando el modelo para {symbol}...")
+    print(f"Training model for {symbol}...")
     model.fit(X, y, epochs=epochs, batch_size=batch_size, verbose=1, callbacks=[LossCallback()])
     
-    # Guardar el modelo
+    # Save the model
     model_path = os.path.join(save_dir, f"model_{symbol}.h5")
     model.save(model_path)
     
-    print(f"Modelo guardado en {model_path}")
-    print(f"Scaler guardado en {scaler_path}")
+    print(f"Model saved to {model_path}")
+    print(f"Scaler saved to {scaler_path}")
     
     plt.ioff()
     plt.show()

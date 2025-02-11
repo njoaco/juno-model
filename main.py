@@ -9,41 +9,41 @@ def main_menu():
     clear_screen()
     print_logo()
 
-    print("Seleccione el tipo de activo:")
-    print("1. Criptomonedas")
-    print("2. Acciones (Stocks)")
-    print("3. Salir\n")
+    print("Select asset type:")
+    print("1. Cryptocurrencies")
+    print("2. Stocks")
+    print("3. Exit\n")
     
     while True:
-        choice = input("Seleccione una opción (1-3): ")
+        choice = input("Select an option (1-3): ")
         if choice in ['1', '2', '3']:
             return choice
-        print("Opción inválida. Intente nuevamente.")
+        print("Invalid option. Please try again.")
 
 def action_menu(asset_type):
     clear_screen()
     print_logo()
 
-    print(f"Seleccione una acción para {asset_type}:")
-    print("1. Entrenar nuevo modelo")
-    print("2. Realizar predicción")
-    print("3. Volver\n")
+    print(f"Select an action for {asset_type}:")
+    print("1. Train new model")
+    print("2. Make prediction")
+    print("3. Back\n")
     
     while True:
-        choice = input("Seleccione una opción (1-3): ")
+        choice = input("Select an option (1-3): ")
         if choice in ['1', '2', '3']:
             return choice
-        print("Opción inválida. Intente nuevamente.")
+        print("Invalid option. Please try again.")
 
 def main():
     while True:
         asset_choice = main_menu()
         
         if asset_choice == '3':
-            print("\n¡Hasta luego!")
+            print("\nGoodbye!")
             break
-        
-        asset_type = "Criptomonedas" if asset_choice == '1' else "Acciones (Stocks)"
+
+        asset_type = "Cryptocurrencies" if asset_choice == '1' else "Stocks"
         
         while True:
             action_choice = action_menu(asset_type)
@@ -54,7 +54,7 @@ def main():
             script = 'scripts/train_model.py' if action_choice == '1' else 'scripts/prediction.py'
             subprocess.run(['python', script, asset_choice])
             
-            input("\nPresione Enter para continuar...")
+            input("\nPress Enter to continue...")
 
 if __name__ == "__main__":
     main()
