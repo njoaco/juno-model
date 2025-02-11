@@ -1,7 +1,7 @@
 # Juno Model
 
 ## Description
-Project for training a cryptocurrency price prediction model using historical data and LSTM networks. It leverages libraries like TensorFlow, Pandas, and Scikit-learn for data manipulation, normalization, and model training.
+Project for training a cryptocurrency and stocks price prediction model using historical data and LSTM networks. It leverages libraries like TensorFlow, Pandas, and Scikit-learn for data manipulation, normalization, and model training.
 
 ## Installation
 1. Clone the repository.
@@ -20,21 +20,15 @@ Project for training a cryptocurrency price prediction model using historical da
   python main.py
   ```
 
-## Additional Information
-Models have been trained for the following cryptocurrencies:
-- BTC
-- ETH
-- BNB
-- XRP
-- DOGE
-- LINK
-- SOL
+- You will need an TwelveData API Key.
+  ```
+  TWELVEDATA_API_KEY=YOUR_TWELVEDATA_API_KEY
+  ```
 
-More models will be trained in the near future.
 
 ## Notes
 - An internet connection is recommended to download historical cryptocurrency data.
-- The model and scaler are saved in the `models/saved_models` folder.
+- The model and scaler are saved in the `models` folder.
 
 ## License
 This project is available under the MIT License.
