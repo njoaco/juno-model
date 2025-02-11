@@ -10,13 +10,11 @@ import requests
 import cryptocompare
 from dotenv import load_dotenv
 
-# Load environment variables from .env
 load_dotenv()
 
-# Configuration
-window_size = 60  # Window size for past data
+window_size = 60
 
-# Create the save directory if it doesn't exist
+
 save_dir = os.path.join(os.path.dirname(__file__), "..", "models")
 os.makedirs(save_dir, exist_ok=True)
 
@@ -78,10 +76,8 @@ def main():
     predicted_price = predicted_prices[days-1]
     print(f"Prediction for {symbol} on day {days}: ${predicted_price:.2f} USD")
     
-    # Calculate percentage change between predicted price and current price
     percentage_change = ((predicted_price - current_price) / current_price) * 100
     
-    # Determine recommendation based on a 5% threshold
     if percentage_change > 5:
         recommendation = "Buy"
     elif percentage_change < -5:

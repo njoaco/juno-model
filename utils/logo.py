@@ -18,4 +18,4 @@ def print_logo():
 
             JUNO c1
     """
-    print("\033[91m" + logo + "\033[0m")  # Imprime en color rojo
+    print("\033[91m" + logo + "\033[0m")

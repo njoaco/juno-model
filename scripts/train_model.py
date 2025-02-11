@@ -10,11 +10,9 @@ import cryptocompare
 import matplotlib.pyplot as plt
 from dotenv import load_dotenv
 
-# Load environment variables from .env
 load_dotenv()
 
-# Configuration
-look_back = 60  # Window size for past data
+look_back = 60
 epochs = 100
 batch_size = 16
 
@@ -22,7 +20,6 @@ API_KEY = os.getenv("TWELVEDATA_API_KEY")
 if not API_KEY:
     raise ValueError("TWELVEDATA_API_KEY not found in .env file")
 
-# Create the save directory if it doesn't exist
 save_dir = os.path.join(os.path.dirname(__file__), "..", "models")
 os.makedirs(save_dir, exist_ok=True)
 
@@ -44,29 +41,24 @@ def main():
     symbol = input("Enter the asset symbol (e.g. BTC for crypto, AAPL for stock): ").upper()
     
     if asset_type == "crypto":
-        # Get and display current price for cryptocurrencies
         current_price = cryptocompare.get_price(symbol, currency='USD')[symbol]['USD']
         print(f"\nCurrent price of {symbol}: ${current_price:.2f} USD")
         hist_data = cryptocompare.get_historical_price_day(symbol, currency="USD", limit=2000)
         df = pd.DataFrame(hist_data)
     else:
-        # Get data for stocks and display current price (latest close)
         df = get_stock_data(symbol)
         current_price = float(df.iloc[-1]['close'])
         print(f"\nCurrent price of {symbol}: ${current_price:.2f} USD")
     
-    # Ensure columns have expected names and drop missing values
     df = df.rename(columns={"close": "close", "high": "high", "low": "low", "volume": "volumeto"})
     df = df.dropna()
     
-    # Normalization
     scaler = MinMaxScaler(feature_range=(0, 1))
     df_scaled = scaler.fit_transform(df[["close", "high", "low", "volumeto"]])
     
     scaler_path = os.path.join(save_dir, f"scaler_{symbol}.pkl")
     joblib.dump(scaler, scaler_path)
     
-    # Create sequences for training
     X, y = [], []
     for i in range(len(df_scaled) - look_back - 30):
         X.append(df_scaled[i : i + look_back, 0])
@@ -75,7 +67,6 @@ def main():
     X, y = np.array(X), np.array(y)
     X = np.reshape(X, (X.shape[0], X.shape[1], 1))
     
-    # Set up real-time training graph
     plt.ion()
     fig, ax = plt.subplots(figsize=(10, 6))
     line, = ax.plot([], [], label='Loss')
@@ -94,15 +85,14 @@ def main():
             ax.relim()
             ax.autoscale_view()
             plt.draw()
-            plt.pause(0.1)  # Pause to update the graph
+            plt.pause(0.1)
     
-    # Define LSTM model
     model = tf.keras.Sequential([
         tf.keras.layers.LSTM(100, return_sequences=True, input_shape=(X.shape[1], 1)),
         tf.keras.layers.Dropout(0.3),
         tf.keras.layers.LSTM(100),
         tf.keras.layers.Dense(50, activation='relu'),
-        tf.keras.layers.Dense(30)  # Output for 30 days
+        tf.keras.layers.Dense(30)
     ])
     
     model.compile(optimizer="adam", loss="mean_squared_error")
@@ -110,7 +100,6 @@ def main():
     print(f"Training model for {symbol}...")
     model.fit(X, y, epochs=epochs, batch_size=batch_size, verbose=1, callbacks=[LossCallback()])
     
-    # Save the model
     model_path = os.path.join(save_dir, f"model_{symbol}.h5")
     model.save(model_path)
     
