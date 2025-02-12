@@ -1,0 +1,37 @@
+# Archivos compilados de Python y cachés
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos de extensión C
+*.so
+
+# Distribución y empaquetado
+build/
+dist/
+*.egg-info/
+
+# Entornos virtuales
+env/
+venv/
+ENV/
+.venv/
+
+# Archivos de variables de entorno
+.env
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Caché de pruebas y herramientas
+.pytest_cache/
+
+# Directorios específicos del proyecto
+models/saved_models/
+predictions/
+api/
+models/
+release/
+utils/__pycache__/
+utils/__pycache__/logo.cpython-312.pyc

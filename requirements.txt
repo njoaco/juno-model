@@ -3,4 +3,5 @@ pandas
 numpy
 scikit-learn
 cryptocompare
-pickle-mixin  # (pickle forma parte de la librería estándar, pero se puede omitir)
+pickle-mixin
+python-dotenv

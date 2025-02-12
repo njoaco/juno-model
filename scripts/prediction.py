@@ -1,64 +1,108 @@
-# scripts/predict.py
-
 import os
+import sys
 import numpy as np
 import pandas as pd
-import cryptocompare
 import tensorflow as tf
-from tensorflow.keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
-import joblib  # Usaremos joblib en lugar de pickle
+import joblib
+from datetime import datetime
+import requests
+import cryptocompare
+from dotenv import load_dotenv
 
-def download_crypto_data(symbol, currency='USD', limit=2100):
-    """
-    Descarga datos históricos diarios de la criptomoneda.
-    Se descarga una cantidad mayor para asegurarse de contar con suficientes datos.
-    """
-    data = cryptocompare.get_historical_price_day(symbol, currency=currency, limit=limit)
-    df = pd.DataFrame(data)
-    df['time'] = pd.to_datetime(df['time'], unit='s')
-    df.sort_values('time', inplace=True)
-    df.reset_index(drop=True, inplace=True)
+load_dotenv()
+
+window_size = 60
+
+
+save_dir = os.path.join(os.path.dirname(__file__), "..", "models")
+os.makedirs(save_dir, exist_ok=True)
+
+API_KEY = os.getenv("TWELVEDATA_API_KEY")
+if not API_KEY:
+    raise ValueError("TWELVEDATA_API_KEY not found in .env file")
+
+def get_stock_data(symbol):
+    url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=1day&apikey={API_KEY}&outputsize={window_size}"
+    response = requests.get(url).json()
+    if "values" not in response:
+        raise ValueError("Error fetching data from TwelveData: " + response.get("message", "Unable to retrieve data."))
+    df = pd.DataFrame(response["values"])
+    df = df.rename(columns={"close": "close", "high": "high", "low": "low", "volume": "volumeto"})
+    df = df.sort_values(by="datetime").reset_index(drop=True)
     return df
 
 def main():
-    crypto_symbol = 'XRP'
-    currency = 'USD'
-    window_size = 60
-    forecast_horizon = 30  # Aunque el modelo fue entrenado para predecir 30 días en el futuro
-    
-    # Ubicación de los archivos del modelo y scaler
-    model_dir = os.path.join(os.path.dirname(__file__), "..", "models", "saved_models")
-    model_filename = f"model_{crypto_symbol}.h5"
-    model_path = os.path.join(model_dir, model_filename)
-    
-    scaler_filename = f"scaler_{crypto_symbol}.pkl"
-    scaler_path = os.path.join(model_dir, scaler_filename)
-    
-    # Cargar el modelo y el scaler
-    # Usamos compile=False para evitar problemas de recompilación
-    model = load_model(model_path, compile=False)
-    
-    # Cargamos el scaler usando joblib.load (ya que se guardó con joblib.dump)
-    scaler = joblib.load(scaler_path)
-    
-    # Descargar datos recientes (se necesitan al menos window_size + forecast_horizon días)
-    df = download_crypto_data(crypto_symbol, currency, limit=window_size + forecast_horizon)
-    data = df['close'].values.reshape(-1, 1)
-    
-    # Escalar los datos utilizando el scaler guardado
-    data_scaled = scaler.transform(data)
-    
-    # Tomamos los últimos 'window_size' días para construir la secuencia de entrada
-    input_sequence = data_scaled[-window_size:]
-    input_sequence = input_sequence.reshape(1, window_size, 1)
-    
-    # Realizar la predicción (la salida estará escalada)
-    prediction_scaled = model.predict(input_sequence)
-    
-    # Convertir la predicción a la escala original
-    prediction = scaler.inverse_transform(prediction_scaled)
-    print(f"Predicción para {crypto_symbol} a {forecast_horizon} días: {prediction[0][0]}")
+    prediction_dir = os.path.join(os.path.dirname(__file__), "..", "predictions")
+    os.makedirs(prediction_dir, exist_ok=True)
 
-if __name__ == '__main__':
+    asset_type = sys.argv[1] if len(sys.argv) > 1 else "1"
+    asset_type = "crypto" if asset_type == "1" else "stock"
+
+    symbol = input("Enter the asset symbol (e.g. BTC for crypto, AAPL for stock): ").upper()
+
+    if asset_type == "crypto":
+        current_price = cryptocompare.get_price(symbol, currency='USD')[symbol]['USD']
+        print(f"\nCurrent price of {symbol}: ${current_price:.2f} USD")
+        hist_data = cryptocompare.get_historical_price_day(symbol, currency="USD", limit=window_size)
+    else:
+        df = get_stock_data(symbol)
+        current_price = float(df.iloc[-1]['close'])
+        print(f"\nCurrent price of {symbol}: ${current_price:.2f} USD")
+        hist_data = df.to_dict('records')
+
+    while True:
+        try:
+            days = int(input("Enter the number of days to predict (1-30): "))
+            if 1 <= days <= 30:
+                break
+            print("The value must be between 1 and 30!")
+        except ValueError:
+            print("Invalid input!")
+
+    scaler = joblib.load(os.path.join(save_dir, f"scaler_{symbol}.pkl"))
+    model = tf.keras.models.load_model(os.path.join(save_dir, f"model_{symbol}.h5"))
+
+    df = pd.DataFrame(hist_data)[['close', 'high', 'low', 'volumeto']]
+    data_scaled = scaler.transform(df)
+
+    input_sequence = data_scaled[-window_size:, 0].reshape(1, window_size, 1)
+    predicted_sequence = model.predict(input_sequence)[0]
+
+    dummy_data = np.zeros((30, 4))
+    dummy_data[:, 0] = predicted_sequence
+    predicted_prices = scaler.inverse_transform(dummy_data)[:, 0]
+
+    predicted_price = predicted_prices[days-1]
+    print(f"Prediction for {symbol} on day {days}: ${predicted_price:.2f} USD")
+    
+    percentage_change = ((predicted_price - current_price) / current_price) * 100
+    
+    if percentage_change > 5:
+        recommendation = "Buy"
+    elif percentage_change < -5:
+        recommendation = "Sell"
+    else:
+        recommendation = "Hold"
+    
+    print(f"Recommendation: {recommendation} (Change: {percentage_change:.2f}%)")
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = os.path.join(prediction_dir, f"pred_{symbol}_{timestamp}.txt")
+
+    report_content = f"""=== Prediction for {symbol} ===
+Date/Time: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+Current Price: ${current_price:.2f}
+Predicted Day: {days}
+Predicted Price: ${predicted_price:.2f}
+Recommendation: {recommendation} (Change: {percentage_change:.2f}%)
+30-Day History:
+""" + "\n".join([f"Day {i+1}: ${price:.2f}" for i, price in enumerate(predicted_prices)])
+
+    with open(filename, 'w') as f:
+        f.write(report_content)
+
+    print(f"\nPrediction saved to: {filename}")
+
+if __name__ == "__main__":
     main()
