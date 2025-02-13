@@ -35,3 +35,6 @@ models/
 release/
 utils/__pycache__/
 utils/__pycache__/logo.cpython-312.pyc
+juno-web/.env.local
+juno-web/.next
+juno-web/node_modules
