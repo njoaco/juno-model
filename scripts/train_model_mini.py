@@ -12,9 +12,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-look_back = 60
-epochs = 100
-batch_size = 16
+look_back = 30
+epochs = 15
+batch_size = 2
 
 API_KEY = os.getenv("TWELVEDATA_API_KEY")
 if not API_KEY:
@@ -56,7 +56,7 @@ def main():
     scaler = MinMaxScaler(feature_range=(0, 1))
     df_scaled = scaler.fit_transform(df[["close", "high", "low", "volumeto"]])
     
-    scaler_path = os.path.join(save_dir, f"scaler_{symbol}.pkl")
+    scaler_path = os.path.join(save_dir, f"scalermini_{symbol}.pkl")
     joblib.dump(scaler, scaler_path)
     
     X, y = [], []
@@ -100,7 +100,7 @@ def main():
     print(f"Training model for {symbol}...")
     model.fit(X, y, epochs=epochs, batch_size=batch_size, verbose=1, callbacks=[LossCallback()])
     
-    model_path = os.path.join(save_dir, f"model_{symbol}.h5")
+    model_path = os.path.join(save_dir, f"modelmini_{symbol}.h5")
     model.save(model_path)
     
     print(f"Model saved to {model_path}")
